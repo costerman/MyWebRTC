@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app.util;
+package com.mrosterman.mywebrtc.app.util;
 import java.util.Random;
 
 /**

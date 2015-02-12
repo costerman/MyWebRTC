@@ -1,6 +1,6 @@
-package com.cloud.mywebrtc.app.events;
+package com.mrosterman.mywebrtc.app.events;
 
-import com.cloud.mywebrtc.app.SignalingParameters;
+import com.mrosterman.mywebrtc.app.SignalingParameters;
 import org.webrtc.IceCandidate;
 import org.webrtc.SessionDescription;
 

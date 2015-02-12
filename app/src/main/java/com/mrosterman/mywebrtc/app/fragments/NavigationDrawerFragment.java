@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app.fragments;
+package com.mrosterman.mywebrtc.app.fragments;
 
 import android.support.v7.app.ActionBarActivity;
 import android.app.Activity;
@@ -21,7 +21,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.Toast;
-import com.cloud.mywebrtc.app.R;
+import com.mrosterman.mywebrtc.app.R;
 
 /**
  * Fragment used for managing interactions for and presentation of a navigation drawer.

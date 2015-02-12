@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.os.Parcel;
 import android.os.Parcelable;

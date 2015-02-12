@@ -25,7 +25,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -34,7 +34,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.media.AudioManager;
 import android.util.Log;
-import com.cloud.mywebrtc.app.util.AppRTCUtils;
+import com.mrosterman.mywebrtc.app.util.AppRTCUtils;
 
 import java.util.Collections;
 import java.util.HashSet;

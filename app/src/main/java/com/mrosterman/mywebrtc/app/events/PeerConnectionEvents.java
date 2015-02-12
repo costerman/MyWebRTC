@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app.events;
+package com.mrosterman.mywebrtc.app.events;
 
 import org.webrtc.IceCandidate;
 import org.webrtc.SessionDescription;

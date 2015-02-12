@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app.fragments;
+package com.mrosterman.mywebrtc.app.fragments;
 
 import android.app.Activity;
 import android.opengl.GLSurfaceView;
@@ -9,9 +9,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
-import com.cloud.mywebrtc.app.MainActivity;
-import com.cloud.mywebrtc.app.R;
-import com.cloud.mywebrtc.app.WebRTCApp;
+import com.mrosterman.mywebrtc.app.MainActivity;
+import com.mrosterman.mywebrtc.app.R;
+import com.mrosterman.mywebrtc.app.WebRTCApp;
 import org.webrtc.VideoRendererGui;
 
 /**

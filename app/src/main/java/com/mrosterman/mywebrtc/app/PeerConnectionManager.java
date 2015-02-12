@@ -1,13 +1,13 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.util.Log;
 
-import com.cloud.mywebrtc.app.events.PeerConnectionEvents;
-import com.cloud.mywebrtc.app.events.SignalingEvents;
-import com.cloud.mywebrtc.app.util.IdGenerator;
+import com.mrosterman.mywebrtc.app.events.PeerConnectionEvents;
+import com.mrosterman.mywebrtc.app.events.SignalingEvents;
+import com.mrosterman.mywebrtc.app.util.IdGenerator;
 import com.firebase.client.*;
 
 import org.webrtc.*;

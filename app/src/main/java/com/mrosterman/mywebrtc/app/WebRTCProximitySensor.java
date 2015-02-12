@@ -25,7 +25,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.content.Context;
 import android.hardware.Sensor;
@@ -34,8 +34,8 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
 import android.util.Log;
-import com.cloud.mywebrtc.app.util.AppRTCUtils;
-import com.cloud.mywebrtc.app.util.AppRTCUtils.NonThreadSafe;
+import com.mrosterman.mywebrtc.app.util.AppRTCUtils;
+import com.mrosterman.mywebrtc.app.util.AppRTCUtils.NonThreadSafe;
 
 /**
  * AppRTCProximitySensor manages functions related to the proximity sensor in

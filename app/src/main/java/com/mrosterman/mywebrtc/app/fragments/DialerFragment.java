@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app.fragments;
+package com.mrosterman.mywebrtc.app.fragments;
 
 import android.app.Activity;
 import android.content.Intent;
@@ -11,7 +11,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
-import com.cloud.mywebrtc.app.*;
+import com.mrosterman.mywebrtc.app.*;
 import com.firebase.client.DataSnapshot;
 import com.firebase.client.Firebase;
 import com.firebase.client.FirebaseError;

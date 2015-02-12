@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.app.Application;
 import android.content.Context;
@@ -13,7 +13,7 @@ public class WebRTCApp extends Application {
     private PeerConnectionManager mPeerConnectionManager;
     private Firebase mBaseDelFuego;
     private Toast mToast;
-    public final static String SESSION_DATA_PARCEL = "com.cloud.mywebrtc.app.parcel.sessiondata";
+    public final static String SESSION_DATA_PARCEL = "com.mrosterman.mywebrtc.app.parcel.sessiondata";
     private static Context mAppContext;
     private boolean mConnectedToRoom = false;
     private String mRoomId;

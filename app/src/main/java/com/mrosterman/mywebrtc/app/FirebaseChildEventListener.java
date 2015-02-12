@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.util.Log;
 import com.firebase.client.ChildEventListener;

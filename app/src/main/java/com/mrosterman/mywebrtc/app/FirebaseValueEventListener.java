@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import com.firebase.client.DataSnapshot;
 import com.firebase.client.FirebaseError;

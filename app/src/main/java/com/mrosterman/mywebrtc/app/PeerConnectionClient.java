@@ -25,13 +25,13 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.content.Context;
 import android.opengl.EGLContext;
 import android.util.Log;
-import com.cloud.mywebrtc.app.events.PeerConnectionEvents;
-import com.cloud.mywebrtc.app.util.LooperExecutor;
+import com.mrosterman.mywebrtc.app.events.PeerConnectionEvents;
+import com.mrosterman.mywebrtc.app.util.LooperExecutor;
 import org.webrtc.*;
 import org.webrtc.MediaConstraints.KeyValuePair;
 import org.webrtc.PeerConnection.IceConnectionState;

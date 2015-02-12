@@ -1,4 +1,4 @@
-package com.cloud.mywebrtc.app;
+package com.mrosterman.mywebrtc.app;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -10,9 +10,9 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.Toast;
-import com.cloud.mywebrtc.app.fragments.DialerFragment;
-import com.cloud.mywebrtc.app.fragments.NavigationDrawerFragment;
-import com.cloud.mywebrtc.app.fragments.VideoFragment;
+import com.mrosterman.mywebrtc.app.fragments.DialerFragment;
+import com.mrosterman.mywebrtc.app.fragments.NavigationDrawerFragment;
+import com.mrosterman.mywebrtc.app.fragments.VideoFragment;
 import com.firebase.client.DataSnapshot;
 import com.firebase.client.Firebase;
 
