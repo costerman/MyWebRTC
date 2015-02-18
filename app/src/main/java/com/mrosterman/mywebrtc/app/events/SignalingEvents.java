@@ -15,12 +15,6 @@ public interface SignalingEvents {
     public void onConnectedToRoom(final SignalingParameters params);
 
     /**
-     * Callback fired once channel for signaling messages is opened and
-     * ready to receive messages.
-     */
-    public void onChannelOpen();
-
-    /**
      * Callback fired once remote SDP is received.
      */
     public void onRemoteDescription(final SessionDescription sdp);

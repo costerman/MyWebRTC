@@ -7,6 +7,7 @@ import android.util.Log;
 
 import com.mrosterman.mywebrtc.app.events.PeerConnectionEvents;
 import com.mrosterman.mywebrtc.app.events.SignalingEvents;
+import com.mrosterman.mywebrtc.app.util.DateUtil;
 import com.mrosterman.mywebrtc.app.util.IdGenerator;
 import com.firebase.client.*;
 
@@ -23,14 +24,13 @@ public class PeerConnectionManager implements
         PeerConnectionEvents {
 
     private static final String TAG = "PeerConnectionManager";
-    private Firebase mFirebaseRef;
+    private Firebase mRootFirebaseRef;
     private Firebase mPeerNodeRef;
     private Firebase mSignalingNodeRef;
     private List<String> mPeers;
     private List<PeerConnection.IceServer> mIceServers;
     private ConcurrentLinkedQueue<IceCandidate> mLocalIceCandidates;
     private SessionDescription mLocalSessionDescription = null;
-    private PeerNodeEventListener mPeerNodeEventListener;
     private SignalingNodeEventListener mSignalingNodeEventListener;
     private PeerConnectionClient mPeerConnectionClient;
     private WebRTCAudioManager mAudioManager;
@@ -42,32 +42,66 @@ public class PeerConnectionManager implements
     private VideoRenderer.Callbacks mRemoteRenderer;
     private Activity mActivity;
     private String mClientId;
-    private boolean mIsInitiator;
+    private String mAgentId;
+    private boolean mIsConnectionEstablished = false;
     private long mPeerNotificationCount = 0;
 
+    /*
+    * Root
+    *   - sessions
+    *       - [SessionId]
+    *           - connections
+    *               - [ConnectionId]
+    *                   - answerer
+    *                       - ice
+    *                           - [CandidateId]
+    *                               - candidate
+    *                               - sdpMLineIndex
+    *                               - sdpMid
+    *                       - peerId
+    *                       - sdp
+    *                           - sdp
+    *                           - type
+    *                   - offerer
+    *                       - ice
+    *                           - [CandidateId]
+    *                               - candidate
+    *                               - sdpMLineIndex
+    *                               - sdpMid
+    *                       - peerId
+    *                       - sdp
+    *                           - sdp
+    *                           - type
+    *           - peers
+    *               - [PeerConnectionId] (created by Firebase Push)
+    *                   - connected (boolean)
+    *                   - username (string)
+    *
+    * */
+
     //Firebase Field Definitions
-    private static final String CREATED_AT = "createdAt";
-    private static final String CREATED_BY = "createdBy";
-    private static final String PEERS = "peers";
-    private static final String SIGNALING_CLIENTS = "signalingClients";
-    private static final String FROM = "from";
-    private static final String TO = "to";
-    private static final String TYPE = "type";
+    private static final String TYPE_ANSWERER = "answerer";
+    private static final String TYPE_OFFERER = "offerer";
+
+    //Static Firebase Paths
+    private static final String SESSION_NODE = "/sessions/%s";
+    private static final String CONNECTIONS_NODE = SESSION_NODE + "/connections";                   //Listen for Child Added
+    private static final String CONNECTIONS_ANSWERER_ICE = CONNECTIONS_NODE + "/%s/answerer/ice";   //Listen for Child Added
+    private static final String CONNECTIONS_ANSWERER_SDP = CONNECTIONS_NODE + "/%s/answerer/sdp";   //Listen for Value Changed
+    private static final String CONNECTIONS_ANSWERER_ICE_CANDIDATE = CONNECTIONS_ANSWERER_ICE + "/%s";
+    private static final String PEERS_NODE = SESSION_NODE + "/peers";                               //Listen for Child Added
+    private static final String PEERS_CLIENT_NODE = PEERS_NODE + "/%s";
+    private static final String PEERS_CONNECTED_NODE = PEERS_CLIENT_NODE + "/connected";                //Listen for Value Changed
 
 
     public PeerConnectionManager(Context context, Firebase ref){
-        mFirebaseRef = ref;
+        mRootFirebaseRef = ref;
         mSignalingNodeEventListener = new SignalingNodeEventListener();
-        mPeerNodeEventListener = new PeerNodeEventListener();
         mPeers = new ArrayList<>();
         mLocalIceCandidates = new ConcurrentLinkedQueue<>();
         mAppContext = context;
 
-        if(mClientId == null){
-            mClientId = UUID.randomUUID().toString();
-        }
-
-        //TODO: Need to move this to a configuration setting
+        //TODO: The STUN/TURN server information will come from the server when we POST to /sessions route.
         //Tims TURN -> PeerConnection.IceServer iceServer = new PeerConnection.IceServer("https://130.211.147.65:1352", "", "");
         mIceServers = new LinkedList<>();
         mIceServers.add(new PeerConnection.IceServer("stun:stun.l.google.com:19302"));
@@ -93,18 +127,59 @@ public class PeerConnectionManager implements
     }
     //endregion
 
-    public String createRoom(String email){
-        String roomId = IdGenerator.generateId();
-        HashMap<String, Object> signalSession = new HashMap<>();
-        mIsInitiator = true;
-        signalSession.put(CREATED_AT, new Date().getTime());
-        signalSession.put(CREATED_BY, email);
+    public void initialize(){
+        MediaConstraints pcConstraints = new MediaConstraints();
+        MediaConstraints videoConstraints = new MediaConstraints();
+        MediaConstraints audioConstraints = new MediaConstraints();
+        final PeerConnectionEvents peerConnectionEvents = this;
 
+        mSignalingParameters = new SignalingParameters(
+                mIceServers,
+                pcConstraints,
+                videoConstraints,
+                audioConstraints,
+                true,
+                null,
+                null);
+
+        mActivity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mAudioManager = WebRTCAudioManager.create(mAppContext, new Runnable() {
+                    @Override
+                    public void run() {
+                        //Do something here...
+                    }
+                });
+                mAudioManager.init();
+
+                if (mPeerConnectionClient == null) {
+                    mPeerConnectionClient = new PeerConnectionClient();
+                    mPeerConnectionClient.createPeerConnectionFactory(
+                            mActivity.getApplicationContext(), mHwCodec, VideoRendererGui.getEGLContext(), peerConnectionEvents);
+                }
+
+                mPeerConnectionClient.createPeerConnection(mLocalRenderer, mRemoteRenderer, mSignalingParameters, mStartBitrate);
+
+                if (mPeerConnectionClient.isHDVideo()) {
+                    mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                } else {
+                    mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                }
+            }
+        });
+    }
+
+    //This code is actually performed by the Fire Birds Service.
+    public String createRoom(){
+        String roomId = IdGenerator.generateId();
         HashMap<String, Object> session = new HashMap<>();
-        session.put(roomId, signalSession);
+        HashMap<String, Long> sessionStartedAt = new HashMap<>();
+        sessionStartedAt.put("startedAt", DateUtil.getDateMilliseconds());
+        session.put(roomId, sessionStartedAt);
 
         try{
-            mFirebaseRef.updateChildren(session);
+            mRootFirebaseRef.child("sessions").updateChildren(session);
         } catch (Exception ex){
             ex.printStackTrace();
             Log.e(TAG, ex.getMessage());
@@ -113,23 +188,19 @@ public class PeerConnectionManager implements
         return roomId;
     }
 
-    public void joinRoom(String roomId, String email){
+    public void joinRoom(String sessionId){
 
-        HashMap<String, Object> peers = new HashMap<>();
-        peers.put(mClientId, email);
-
-        HashMap<String, Object> peerSignaling = new HashMap<>();
-        HashMap<String, Object> listeningOn = new HashMap<>();
-        peerSignaling.put(mClientId, listeningOn);
+        HashMap<String, Object> peer = new HashMap<>();
+        peer.put("connected", true);
+        peer.put("username", "AndroidCarl");
 
         try{
+            mPeerNodeRef = mRootFirebaseRef.child(String.format(PEERS_NODE, sessionId)).push();
+            mClientId = mPeerNodeRef.getKey();
+            mPeerNodeRef.updateChildren(peer);
 
-            mSignalingNodeRef = mFirebaseRef.getRoot().child(roomId).child("signaling");
-            mSignalingNodeRef.updateChildren(peerSignaling);
-            mSignalingNodeRef.addChildEventListener(mSignalingNodeEventListener);
+            mSignalingNodeRef = mRootFirebaseRef.getRoot().child("sessions").child(sessionId).child("connections").push();
 
-            mPeerNodeRef = mFirebaseRef.getRoot().child(roomId).child("peers");
-            mPeerNodeRef.updateChildren(peers);
 
             //Retrieve the number of peers currently under the peers node
             mPeerNodeRef.addListenerForSingleValueEvent(new ValueEventListener() {
@@ -139,7 +210,20 @@ public class PeerConnectionManager implements
                     Log.d(TAG, String.format("Number of Peers already connected: %d", mPeerNotificationCount));
 
                     //Start listening to notifications on Peers node
-                    mPeerNodeRef.addChildEventListener(mPeerNodeEventListener);
+                    mPeerNodeRef.addChildEventListener(new FirebaseChildEventListener() {
+                        @Override
+                        public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                            super.onChildAdded(dataSnapshot, s);
+                            handlePeerAdded(dataSnapshot);
+                        }
+
+                        @Override
+                        public void onChildRemoved(DataSnapshot dataSnapshot) {
+                            super.onChildRemoved(dataSnapshot);
+
+                            Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
+                        }
+                    });
                 }
 
                 @Override
@@ -147,75 +231,40 @@ public class PeerConnectionManager implements
 
                 }
             });
-
-
-
         } catch (Exception ex){
             Log.d(TAG, String.format("endAt Exception: %s", ex.getMessage()));
         }
-
-
-        //Configure Constraints
-        MediaConstraints pcConstraints = new MediaConstraints();
-        MediaConstraints videoConstraints = new MediaConstraints();
-        MediaConstraints audioConstraints = new MediaConstraints();
-
-        mIsInitiator = true;
-
-        mSignalingParameters = new SignalingParameters(
-                mIceServers,
-                pcConstraints,
-                videoConstraints,
-                audioConstraints,
-                roomId,
-                mClientId,
-                mIsInitiator,
-                null,
-                null);
-
-        mActivity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                connect(mSignalingParameters);
-            }
-        });
     }
 
-    private void connect(final SignalingParameters params){
-        mAudioManager = WebRTCAudioManager.create(mAppContext, new Runnable() {
-            @Override
-            public void run() {
-                //Do something here...
-            }
-        });
-        mAudioManager.init();
-
-        final PeerConnectionEvents peerConnectionEvents = this;
-        final SignalingEvents signalingEvents = this;
-        mActivity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                if (mPeerConnectionClient == null) {
-                    mPeerConnectionClient = new PeerConnectionClient();
-                    mPeerConnectionClient.createPeerConnectionFactory(
-                            mActivity.getApplicationContext(), mHwCodec, VideoRendererGui.getEGLContext(), peerConnectionEvents);
-                }
-                if (params != null) {
-                    Log.w(TAG, "EGL context is ready after room connection.");
-
-                    mPeerConnectionClient.createPeerConnection(mLocalRenderer, mRemoteRenderer, mSignalingParameters, mStartBitrate);
-
-                    if (mPeerConnectionClient.isHDVideo()) {
-                        mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                    } else {
-                        mActivity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+    private void handlePeerAdded(DataSnapshot dataSnapshot){
+        if(mPeerNotificationCount > 0){
+            //Do nothing, we are getting notifications for peers that were already connected
+            Log.d(TAG, String.format("Existing Peer: %s", dataSnapshot.getKey()));
+            mPeerNotificationCount--; //Decrement the peer counter, because we got a notification.
+        } else {
+            //Listen to agent's peer connection node
+            String agentId = dataSnapshot.getKey();
+            Firebase ref = mRootFirebaseRef.child(String.format(PEERS_CONNECTED_NODE, agentId));
+            ref.addValueEventListener(new ValueEventListener() {
+                @Override
+                public void onDataChange(DataSnapshot dataSnapshot) {
+                    if(dataSnapshot.getValue() == true){
+                        //Agent is connected, time to create a new record under the connection node.
                     }
-
-                    signalingEvents.onChannelOpen();
-                    signalingEvents.onConnectedToRoom(params);
                 }
-            }
-        });
+
+                @Override
+                public void onCancelled(FirebaseError firebaseError) {
+                    //TODO: Handle Error case
+                }
+            });
+
+
+            //Create offer for new peer that just connected
+            Log.d(TAG, String.format("New Peer Added: %s", dataSnapshot.getKey()));
+            mPeers.add(dataSnapshot.getKey());
+            mPeerConnectionClient.createOffer();
+        }
     }
 
     private void sendOffer(){
@@ -245,11 +294,6 @@ public class PeerConnectionManager implements
                 WebRTCApp.getInstance().setConnected(true);
             }
         });
-    }
-
-    @Override
-    public void onChannelOpen() {
-        logAndToast(TAG, "VideoFragment:onChannelOpen()");
     }
 
     @Override
@@ -311,44 +355,6 @@ public class PeerConnectionManager implements
 
     //endregion
 
-    //region - Firebase Child Event Listener for Peer Node
-
-    /**
-     * The PeerNodeEventListener extends the implementation of FirebaseChildEventListener base class.
-     * We use this for listening to events that happen on the peer node within our firebase structure.
-     */
-    private class PeerNodeEventListener extends FirebaseChildEventListener{
-
-        /**
-         * The onChildAdded callback is raised for each child that has been added to the Peers node.
-         * If there are 3 records under peers, the first time we start listening to the node we will receive 3
-         * onChildAdded events.
-         * @param dataSnapshot
-         * @param s
-         */
-        @Override
-        public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-            super.onChildAdded(dataSnapshot, s);
-
-            if(mPeerNotificationCount > 0){
-                //Do nothing, we are getting notifications for peers that were already connected
-                Log.d(TAG, String.format("Existing Peer: %s", dataSnapshot.getKey()));
-                mPeerNotificationCount--; //Decrement the peer counter, because we got a notification.
-            } else {
-                //Create offer for new peer that just connected
-                Log.d(TAG, String.format("New Peer Added: %s", dataSnapshot.getKey()));
-                mPeers.add(dataSnapshot.getKey());
-            }
-        }
-
-        @Override
-        public void onChildRemoved(DataSnapshot dataSnapshot) {
-            super.onChildRemoved(dataSnapshot);
-
-            Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
-        }
-    }
-    //endregion
 
     private class SignalingNodeEventListener extends FirebaseChildEventListener{
         @Override

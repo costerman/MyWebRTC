@@ -15,8 +15,6 @@ public class SignalingParameters {
     public MediaConstraints pcConstraints;
     public MediaConstraints videoConstraints;
     public MediaConstraints audioConstraints;
-    public String roomId;
-    public String clientId;
     public SessionDescription offerSDP;
     List<IceCandidate> iceCandidates;
     public boolean initiator;
@@ -25,8 +23,6 @@ public class SignalingParameters {
                                MediaConstraints pcConstraints,
                                MediaConstraints videoConstraints,
                                MediaConstraints audioConstraints,
-                               String roomId,
-                               String clientId,
                                boolean initiator,
                                SessionDescription offerSDP,
                                List<IceCandidate> iceCandidates){
@@ -34,8 +30,6 @@ public class SignalingParameters {
         this.pcConstraints = pcConstraints;
         this.audioConstraints = audioConstraints;
         this.videoConstraints = videoConstraints;
-        this.roomId = roomId;
-        this.clientId = clientId;
         this.initiator = initiator;
         this.offerSDP = offerSDP;
         this.iceCandidates = iceCandidates;
