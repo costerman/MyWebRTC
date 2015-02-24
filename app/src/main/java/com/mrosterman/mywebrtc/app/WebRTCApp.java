@@ -10,7 +10,7 @@ import com.firebase.client.Firebase;
  */
 public class WebRTCApp extends Application {
 
-    private PeerConnectionManager mPeerConnectionManager;
+    private SignalingManager mSignalingManager;
     private Firebase mBaseDelFuego;
     private Toast mToast;
     public final static String SESSION_DATA_PARCEL = "com.mrosterman.mywebrtc.app.parcel.sessiondata";
@@ -41,15 +41,15 @@ public class WebRTCApp extends Application {
         mAppContext = this.getApplicationContext();
         Firebase.setAndroidContext(mAppContext);
         mBaseDelFuego = new Firebase("https://webrtc-cloud.firebaseio.com");
-        mPeerConnectionManager = new PeerConnectionManager(mAppContext, mBaseDelFuego);
+        mSignalingManager = new SignalingManager(mAppContext, mBaseDelFuego);
     }
 
     public Firebase getFirebaseRef(){
         return mBaseDelFuego;
     }
 
-    public PeerConnectionManager getPeerConnectionManager(){
-        return mPeerConnectionManager;
+    public SignalingManager getPeerConnectionManager(){
+        return mSignalingManager;
     }
 
     public void setRoomId(String roomId){

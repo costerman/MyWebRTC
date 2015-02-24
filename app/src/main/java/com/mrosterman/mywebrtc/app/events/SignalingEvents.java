@@ -15,16 +15,6 @@ public interface SignalingEvents {
     public void onConnectedToRoom(final SignalingParameters params);
 
     /**
-     * Callback fired once remote SDP is received.
-     */
-    public void onRemoteDescription(final SessionDescription sdp);
-
-    /**
-     * Callback fired once remote Ice candidate is received.
-     */
-    public void onRemoteIceCandidate(final IceCandidate candidate);
-
-    /**
      * Callback fired once channel is closed.
      */
     public void onChannelClose();

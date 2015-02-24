@@ -19,8 +19,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 /**
  * Created by costerman on 2/10/15.
  */
-public class PeerConnectionManager implements
-        SignalingEvents,
+public class SignalingManager implements
         PeerConnectionEvents {
 
     private enum SDPType{
@@ -55,7 +54,7 @@ public class PeerConnectionManager implements
     private boolean mIsConnectionEstablished = false;
 
 
-    public PeerConnectionManager(Context context, Firebase ref){
+    public SignalingManager(Context context, Firebase ref){
         mRootRef = ref.getRoot();
         mPeers = new ArrayList<>();
         mLocalIceCandidates = new ConcurrentLinkedQueue<>();
@@ -281,40 +280,6 @@ public class PeerConnectionManager implements
         Log.d(tag, msg);
     }
 
-    //region - Signaling Event Callbacks
-
-    @Override
-    public void onConnectedToRoom(final SignalingParameters params) {
-        mActivity.runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                WebRTCApp.getInstance().setConnected(true);
-            }
-        });
-    }
-
-    @Override
-    public void onRemoteDescription(SessionDescription sdp) {
-        logAndToast(TAG, "VideoFragment:onRemoteDescription()");
-    }
-
-    @Override
-    public void onRemoteIceCandidate(IceCandidate candidate) {
-        logAndToast(TAG, "VideoFragment:onRemoteIceCandidate()");
-    }
-
-    @Override
-    public void onChannelClose() {
-        logAndToast(TAG, "VideoFragment:onChannelClose");
-    }
-
-    @Override
-    public void onChannelError(String description) {
-        logAndToast(TAG, "VideoFragment:onChannelError");
-    }
-
-    //endregion
-
     //region - Peer Connection Event Callbacks
 
     /**
@@ -357,6 +322,12 @@ public class PeerConnectionManager implements
     public void onIceConnected() {
         logAndToast(TAG, "VideoFragment:onIceConnected");
         mIsConnectionEstablished = true;
+        mActivity.runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                WebRTCApp.getInstance().setConnected(true);
+            }
+        });
     }
 
     @Override
