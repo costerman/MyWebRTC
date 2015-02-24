@@ -23,15 +23,18 @@ public class PeerConnectionManager implements
         SignalingEvents,
         PeerConnectionEvents {
 
+    private enum SDPType{
+        Offer,
+        Answer,
+        Ice
+    }
+
     private static final String TAG = "PeerConnectionManager";
-    private Firebase mRootFirebaseRef;
-    private Firebase mPeerNodeRef;
-    private Firebase mSignalingNodeRef;
+
     private List<String> mPeers;
     private List<PeerConnection.IceServer> mIceServers;
     private ConcurrentLinkedQueue<IceCandidate> mLocalIceCandidates;
     private SessionDescription mLocalSessionDescription = null;
-    private SignalingNodeEventListener mSignalingNodeEventListener;
     private PeerConnectionClient mPeerConnectionClient;
     private WebRTCAudioManager mAudioManager;
     private Context mAppContext;
@@ -40,63 +43,20 @@ public class PeerConnectionManager implements
     private int mStartBitrate;
     private VideoRenderer.Callbacks mLocalRenderer;
     private VideoRenderer.Callbacks mRemoteRenderer;
+    private Firebase mRootRef;
+    private Firebase mSessionRef;
+    private Firebase mPeersRef;
+    private Firebase mReceiverRef;
     private Activity mActivity;
+    private String mSessionId;
     private String mClientId;
     private String mAgentId;
+    private SDPType mSDPType = SDPType.Offer;
     private boolean mIsConnectionEstablished = false;
-    private long mPeerNotificationCount = 0;
-
-    /*
-    * Root
-    *   - sessions
-    *       - [SessionId]
-    *           - connections
-    *               - [ConnectionId]
-    *                   - answerer
-    *                       - ice
-    *                           - [CandidateId]
-    *                               - candidate
-    *                               - sdpMLineIndex
-    *                               - sdpMid
-    *                       - peerId
-    *                       - sdp
-    *                           - sdp
-    *                           - type
-    *                   - offerer
-    *                       - ice
-    *                           - [CandidateId]
-    *                               - candidate
-    *                               - sdpMLineIndex
-    *                               - sdpMid
-    *                       - peerId
-    *                       - sdp
-    *                           - sdp
-    *                           - type
-    *           - peers
-    *               - [PeerConnectionId] (created by Firebase Push)
-    *                   - connected (boolean)
-    *                   - username (string)
-    *
-    * */
-
-    //Firebase Field Definitions
-    private static final String TYPE_ANSWERER = "answerer";
-    private static final String TYPE_OFFERER = "offerer";
-
-    //Static Firebase Paths
-    private static final String SESSION_NODE = "/sessions/%s";
-    private static final String CONNECTIONS_NODE = SESSION_NODE + "/connections";                   //Listen for Child Added
-    private static final String CONNECTIONS_ANSWERER_ICE = CONNECTIONS_NODE + "/%s/answerer/ice";   //Listen for Child Added
-    private static final String CONNECTIONS_ANSWERER_SDP = CONNECTIONS_NODE + "/%s/answerer/sdp";   //Listen for Value Changed
-    private static final String CONNECTIONS_ANSWERER_ICE_CANDIDATE = CONNECTIONS_ANSWERER_ICE + "/%s";
-    private static final String PEERS_NODE = SESSION_NODE + "/peers";                               //Listen for Child Added
-    private static final String PEERS_CLIENT_NODE = PEERS_NODE + "/%s";
-    private static final String PEERS_CONNECTED_NODE = PEERS_CLIENT_NODE + "/connected";                //Listen for Value Changed
 
 
     public PeerConnectionManager(Context context, Firebase ref){
-        mRootFirebaseRef = ref;
-        mSignalingNodeEventListener = new SignalingNodeEventListener();
+        mRootRef = ref.getRoot();
         mPeers = new ArrayList<>();
         mLocalIceCandidates = new ConcurrentLinkedQueue<>();
         mAppContext = context;
@@ -170,7 +130,7 @@ public class PeerConnectionManager implements
         });
     }
 
-    //This code is actually performed by the Fire Birds Service.
+    //TEMPORARY CODE UNTIL SERVER IS IMPLEMENTED
     public String createRoom(){
         String roomId = IdGenerator.generateId();
         HashMap<String, Object> session = new HashMap<>();
@@ -179,7 +139,7 @@ public class PeerConnectionManager implements
         session.put(roomId, sessionStartedAt);
 
         try{
-            mRootFirebaseRef.child("sessions").updateChildren(session);
+            mRootRef.child("sessions").updateChildren(session);
         } catch (Exception ex){
             ex.printStackTrace();
             Log.e(TAG, ex.getMessage());
@@ -187,92 +147,129 @@ public class PeerConnectionManager implements
 
         return roomId;
     }
+    //END TEMPORARY CODE
 
     public void joinRoom(String sessionId){
-
-        HashMap<String, Object> peer = new HashMap<>();
-        peer.put("connected", true);
-        peer.put("username", "AndroidCarl");
+        mSessionId = sessionId;
+        mSessionRef = mRootRef.child("sessions").child(mSessionId);
 
         try{
-            mPeerNodeRef = mRootFirebaseRef.child(String.format(PEERS_NODE, sessionId)).push();
-            mClientId = mPeerNodeRef.getKey();
-            mPeerNodeRef.updateChildren(peer);
+            //TEMPORARY CODE UNTIL SERVER IS IMPLEMENTED
+            mPeersRef = mSessionRef.child("peers").push();
+            //END TEMPORARY CODE
 
-            mSignalingNodeRef = mRootFirebaseRef.getRoot().child("sessions").child(sessionId).child("connections").push();
+            //Persist our ID which comes from the Peers node when we join...this will come from the server once that piece is implemented
+            mClientId = mPeersRef.getKey();
 
-
-            //Retrieve the number of peers currently under the peers node
-            mPeerNodeRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            //Start listening to notifications on Peers node
+            mPeersRef.addChildEventListener(new FirebaseChildEventListener() {
                 @Override
-                public void onDataChange(DataSnapshot dataSnapshot) {
-                    mPeerNotificationCount = dataSnapshot.getChildrenCount();
-                    Log.d(TAG, String.format("Number of Peers already connected: %d", mPeerNotificationCount));
-
-                    //Start listening to notifications on Peers node
-                    mPeerNodeRef.addChildEventListener(new FirebaseChildEventListener() {
-                        @Override
-                        public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                            super.onChildAdded(dataSnapshot, s);
-                            handlePeerAdded(dataSnapshot);
-                        }
-
-                        @Override
-                        public void onChildRemoved(DataSnapshot dataSnapshot) {
-                            super.onChildRemoved(dataSnapshot);
-
-                            Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
-                        }
-                    });
+                public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                    super.onChildAdded(dataSnapshot, s);
+                    handlePeerAdded(dataSnapshot);
                 }
 
                 @Override
-                public void onCancelled(FirebaseError firebaseError) {
-
+                public void onChildRemoved(DataSnapshot dataSnapshot) {
+                    super.onChildRemoved(dataSnapshot);
+                    //TODO: Time to do some cleanup?
+                    Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
                 }
             });
+
+            //The SignalingNodeRef is used for all signaling to this Client from a peer
+            mReceiverRef = mSessionRef.child("connections").child(mClientId);
+            mReceiverRef.addChildEventListener(new FirebaseChildEventListener() {
+                @Override
+                public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                    super.onChildAdded(dataSnapshot, s);
+                    handleSenderAdded(dataSnapshot);
+                }
+            });
+
+            //We are listening on all required nodes, time to set connected to true
+            mPeersRef.child(mClientId).child("connected").setValue(true);
+
         } catch (Exception ex){
             Log.d(TAG, String.format("endAt Exception: %s", ex.getMessage()));
         }
     }
 
     private void handlePeerAdded(DataSnapshot dataSnapshot){
-        if(mPeerNotificationCount > 0){
-            //Do nothing, we are getting notifications for peers that were already connected
-            Log.d(TAG, String.format("Existing Peer: %s", dataSnapshot.getKey()));
-            mPeerNotificationCount--; //Decrement the peer counter, because we got a notification.
-        } else {
-            //Listen to agent's peer connection node
-            String agentId = dataSnapshot.getKey();
-            Firebase ref = mRootFirebaseRef.child(String.format(PEERS_CONNECTED_NODE, agentId));
-            ref.addValueEventListener(new ValueEventListener() {
-                @Override
-                public void onDataChange(DataSnapshot dataSnapshot) {
-                    if(dataSnapshot.getValue() == true){
-                        //Agent is connected, time to create a new record under the connection node.
-                    }
+        //Mobile client should be the first peer added to the peers node, so any child added will be either an agent, shadow, or recorder
+        //Listen to agent's peer connection node
+        Log.d(TAG, String.format("New Peer Added: %s", dataSnapshot.getKey()));
+        mAgentId = dataSnapshot.getKey();
+        mPeers.add(mAgentId);
+        Firebase agentPeerRef = mSessionRef.child("peers").child(mAgentId);
+        agentPeerRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                boolean connected = (boolean) dataSnapshot.getValue();
+                if (connected == true) {
+                    //Agent is connected add listener for ice candidates under sender
+                    mReceiverRef.child(mAgentId).child("ice").addChildEventListener(new FirebaseChildEventListener() {
+                        @Override
+                        public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                            super.onChildAdded(dataSnapshot, s);
+                            handleIceCandidateAdded(dataSnapshot);
+                        }
+                    });
+                    //Create the offer for the sender
+                    mPeerConnectionClient.createOffer();
+                    mSDPType = SDPType.Offer;
                 }
+            }
 
-                @Override
-                public void onCancelled(FirebaseError firebaseError) {
-                    //TODO: Handle Error case
-                }
-            });
+            @Override
+            public void onCancelled(FirebaseError firebaseError) {
+                //TODO: Handle Error case
+            }
+        });
+    }
 
+    private void handleSenderAdded(DataSnapshot dataSnapshot){
+        logAndToast(TAG, "Remote SDP Added");
+        HashMap<String, Object> sender = null;
 
-            //Create offer for new peer that just connected
-            Log.d(TAG, String.format("New Peer Added: %s", dataSnapshot.getKey()));
-            mPeers.add(dataSnapshot.getKey());
-            mPeerConnectionClient.createOffer();
+        //Get the Sender data
+        try {
+            sender = (HashMap<String, Object>) dataSnapshot.getValue();
+        } catch(Exception ex){
+            Log.e(TAG, "Blew up when we tried to cast sender to a HashMap<String, Object>");
+            ex.printStackTrace();
+            return;
+        }
+
+        //Set the remote session description based on the type
+        SDPType type = (SDPType)sender.get("type");
+        String sdp = sender.get("sdp").toString();
+        if(type != SDPType.Ice){
+            //Set remote description
+            SessionDescription sessionDescription = null;
+            if(type == SDPType.Answer)
+                sessionDescription = new SessionDescription(SessionDescription.Type.ANSWER, sdp);
+            else
+                sessionDescription = new SessionDescription(SessionDescription.Type.OFFER, sdp);
+            mPeerConnectionClient.setRemoteDescription(sessionDescription);
         }
     }
 
-    private void sendOffer(){
+    private void handleIceCandidateAdded(DataSnapshot dataSnapshot){
+        HashMap<String, Object> ice = null;
+        try{
+             ice = (HashMap<String, Object>)dataSnapshot.getValue();
+        } catch (Exception ex){
+            logAndToast(TAG, "Blew up when we tried to cast ice to a HashMap<String, Object>");
+            ex.printStackTrace();
+            return;
+        }
 
-    }
-
-    private void sendIce(){
-
+        int sdpMLineIndex = Integer.parseInt(ice.get("sdpMLineIndex").toString());
+        String candiate = ice.get("candidate").toString();
+        String sdpMid = ice.get("sdpMid").toString();
+        IceCandidate iceCandidate = new IceCandidate(sdpMid, sdpMLineIndex, candiate);
+        mPeerConnectionClient.addRemoteIceCandidate(iceCandidate);
     }
 
     private void onAudioManagerChangedState() {
@@ -320,22 +317,46 @@ public class PeerConnectionManager implements
 
     //region - Peer Connection Event Callbacks
 
+    /**
+     * On Local Description we want to update the receiver node with sender SDP information.
+     * This can be either an offer or an answer depending on the mSDPType.
+     * @param sdp
+     */
     @Override
     public void onLocalDescription(SessionDescription sdp) {
         logAndToast(TAG, "VideoFragment:onLocalDescription");
+        HashMap<String, Object> sender = new HashMap<>();
+        HashMap<String, Object> signalData = new HashMap<>();
+
         mLocalSessionDescription = sdp;
+        signalData.put("sdp", mLocalSessionDescription);
+        signalData.put("type", mSDPType.toString());
+        sender.put(mClientId, signalData);
+
+        mSessionRef.child("connections").child(mAgentId).updateChildren(sender);
     }
 
+    /**
+     * Each time an ice candidate is
+     * @param candidate
+     */
     @Override
     public void onIceCandidate(IceCandidate candidate) {
         logAndToast(TAG, "VideoFragment:onIceCandidate");
         //Add this ice candidate to connected peer
-        mLocalIceCandidates.add(candidate);
+
+        HashMap<String, Object> iceCandidate = new HashMap<>();
+        iceCandidate.put("candidate", candidate.sdp);
+        iceCandidate.put("sdpMid", candidate.sdpMid);
+        iceCandidate.put("sdpMLineIndex", candidate.sdpMLineIndex);
+
+        mReceiverRef.child(mAgentId).child("ice").push().updateChildren(iceCandidate);
     }
 
     @Override
     public void onIceConnected() {
         logAndToast(TAG, "VideoFragment:onIceConnected");
+        mIsConnectionEstablished = true;
     }
 
     @Override
@@ -354,14 +375,4 @@ public class PeerConnectionManager implements
     }
 
     //endregion
-
-
-    private class SignalingNodeEventListener extends FirebaseChildEventListener{
-        @Override
-        public void onChildAdded(DataSnapshot dataSnapshot, String s){
-            super.onChildAdded(dataSnapshot, s);
-
-            Log.d(TAG, String.format("Signaling Added: %s", dataSnapshot.getKey()));
-        }
-    }
 }

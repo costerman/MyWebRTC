@@ -122,7 +122,7 @@ public class DialerFragment extends ListFragment {
         final Button createRoomButton = (Button) getActivity().findViewById(R.id.create_room_button);
         createRoomButton.setOnClickListener(new View.OnClickListener(){
             public void onClick(View v){
-                WebRTCApp.getInstance().getPeerConnectionManager().createRoom("MyTestEmail@HardcodedCrap.com");
+                WebRTCApp.getInstance().getPeerConnectionManager().createRoom();
             }
         });
 

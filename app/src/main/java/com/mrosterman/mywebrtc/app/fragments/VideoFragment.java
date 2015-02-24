@@ -79,7 +79,7 @@ public class VideoFragment extends Fragment {
 
         if(!connected && roomId != null && roomId.length() > 0) {
             WebRTCApp.getInstance().getPeerConnectionManager().setActivity(getActivity());
-            WebRTCApp.getInstance().getPeerConnectionManager().joinRoom(roomId, "someEmail@emailz.com");
+            WebRTCApp.getInstance().getPeerConnectionManager().joinRoom(roomId);
         } else {
             logAndToast(TAG, "No room number has been selected, please select a room.");
         }
