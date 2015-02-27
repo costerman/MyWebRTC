@@ -5,10 +5,7 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.util.Log;
 
-import com.mrosterman.mywebrtc.app.events.PeerConnectionEvents;
-import com.mrosterman.mywebrtc.app.events.SignalingEvents;
 import com.mrosterman.mywebrtc.app.util.DateUtil;
-import com.mrosterman.mywebrtc.app.util.IdGenerator;
 import com.firebase.client.*;
 
 import org.webrtc.*;
@@ -18,9 +15,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Created by costerman on 2/10/15.
+ * NOTE: Logic is not currently in place to handle more than one peer.
  */
 public class SignalingManager implements
-        PeerConnectionEvents {
+        PeerConnectionClient.PeerConnectionEvents {
 
     private enum SDPType{
         Offer,
@@ -43,15 +41,16 @@ public class SignalingManager implements
     private VideoRenderer.Callbacks mLocalRenderer;
     private VideoRenderer.Callbacks mRemoteRenderer;
     private Firebase mRootRef;
-    private Firebase mSessionRef;
+    private Firebase mRoomRef;
     private Firebase mPeersRef;
     private Firebase mReceiverRef;
     private Activity mActivity;
-    private String mSessionId;
+    private String mRoomId;
     private String mClientId;
     private String mAgentId;
     private SDPType mSDPType = SDPType.Offer;
     private boolean mIsConnectionEstablished = false;
+    private long mPeerInitializationCount = 0;
 
 
     public SignalingManager(Context context, Firebase ref){
@@ -59,9 +58,6 @@ public class SignalingManager implements
         mPeers = new ArrayList<>();
         mLocalIceCandidates = new ConcurrentLinkedQueue<>();
         mAppContext = context;
-
-        //TODO: The STUN/TURN server information will come from the server when we POST to /sessions route.
-        //Tims TURN -> PeerConnection.IceServer iceServer = new PeerConnection.IceServer("https://130.211.147.65:1352", "", "");
         mIceServers = new LinkedList<>();
         mIceServers.add(new PeerConnection.IceServer("stun:stun.l.google.com:19302"));
         mIceServers.add(new PeerConnection.IceServer("turn:192.158.29.39:3478?transport=udp", "28224511:1379330808", "JZEOEt2V3Qb0y27GRntt2u2PAYA="));
@@ -90,7 +86,7 @@ public class SignalingManager implements
         MediaConstraints pcConstraints = new MediaConstraints();
         MediaConstraints videoConstraints = new MediaConstraints();
         MediaConstraints audioConstraints = new MediaConstraints();
-        final PeerConnectionEvents peerConnectionEvents = this;
+        final PeerConnectionClient.PeerConnectionEvents peerConnectionEvents = this;
 
         mSignalingParameters = new SignalingParameters(
                 mIceServers,
@@ -129,16 +125,20 @@ public class SignalingManager implements
         });
     }
 
-    //TEMPORARY CODE UNTIL SERVER IS IMPLEMENTED
+    /**
+     * Creates a new room with a firebase generated id.
+     * @return
+     */
     public String createRoom(){
-        String roomId = IdGenerator.generateId();
-        HashMap<String, Object> session = new HashMap<>();
-        HashMap<String, Long> sessionStartedAt = new HashMap<>();
-        sessionStartedAt.put("startedAt", DateUtil.getDateMilliseconds());
-        session.put(roomId, sessionStartedAt);
+        Firebase ref = mRootRef.child("rooms").push();
+        String roomId = ref.getKey();
+        HashMap<String, Object> room = new HashMap<>();
+        HashMap<String, Long> roomCreatedAt = new HashMap<>();
+        roomCreatedAt.put("startedAt", DateUtil.getDateMilliseconds());
+        room.put(roomId, roomCreatedAt);
 
         try{
-            mRootRef.child("sessions").updateChildren(session);
+            ref.updateChildren(room);
         } catch (Exception ex){
             ex.printStackTrace();
             Log.e(TAG, ex.getMessage());
@@ -146,38 +146,59 @@ public class SignalingManager implements
 
         return roomId;
     }
-    //END TEMPORARY CODE
 
-    public void joinRoom(String sessionId){
-        mSessionId = sessionId;
-        mSessionRef = mRootRef.child("sessions").child(mSessionId);
+    /**
+     * Joins a room and
+     * @param roomId
+     */
+    public void joinRoom(String roomId){
+        mRoomId = roomId;
+        mRoomRef = mRootRef.child("rooms").child(mRoomId);
 
         try{
-            //TEMPORARY CODE UNTIL SERVER IS IMPLEMENTED
-            mPeersRef = mSessionRef.child("peers").push();
-            //END TEMPORARY CODE
-
-            //Persist our ID which comes from the Peers node when we join...this will come from the server once that piece is implemented
+            mPeersRef = mRoomRef.child("peers").push();
             mClientId = mPeersRef.getKey();
 
-            //Start listening to notifications on Peers node
-            mPeersRef.addChildEventListener(new FirebaseChildEventListener() {
+            mPeersRef.addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
-                public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                    super.onChildAdded(dataSnapshot, s);
-                    handlePeerAdded(dataSnapshot);
+                public void onDataChange(DataSnapshot dataSnapshot) {
+                    //Since peers could have been added already, and we are not the first to join the room, we need
+                    //to set a counter and decrement for each child added event
+                    mPeerInitializationCount = dataSnapshot.getChildrenCount();
+
+                    //Start listening to notifications on Peers node
+                    mPeersRef.addChildEventListener(new FirebaseChildEventListener() {
+                        @Override
+                        public void onChildAdded(DataSnapshot dataSnapshot, String s) {
+                            super.onChildAdded(dataSnapshot, s);
+                            if(mPeerInitializationCount == 0) {
+                                //A new peer was added after we joined, time to send an offer.
+                                handlePeerAdded(dataSnapshot);
+                            } else {
+                                //There were other peers that already joined, they will be sending us an offer.
+                                mPeerInitializationCount--;
+                            }
+                        }
+
+                        @Override
+                        public void onChildRemoved(DataSnapshot dataSnapshot) {
+                            super.onChildRemoved(dataSnapshot);
+                            //TODO: Time to do some cleanup?
+                            Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
+                        }
+                    });
                 }
 
                 @Override
-                public void onChildRemoved(DataSnapshot dataSnapshot) {
-                    super.onChildRemoved(dataSnapshot);
-                    //TODO: Time to do some cleanup?
-                    Log.d(TAG, String.format("Peer was removed: %s", dataSnapshot.getKey()));
+                public void onCancelled(FirebaseError firebaseError) {
+                    //TODO: Handle error
+                    Log.e(TAG, "We had an error when listening for a single value event on the Peers node.");
                 }
             });
 
+
             //The SignalingNodeRef is used for all signaling to this Client from a peer
-            mReceiverRef = mSessionRef.child("connections").child(mClientId);
+            mReceiverRef = mRoomRef.child("connections").child(mClientId);
             mReceiverRef.addChildEventListener(new FirebaseChildEventListener() {
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
@@ -194,13 +215,16 @@ public class SignalingManager implements
         }
     }
 
+    /**
+     * Handle Peers added will send an offer to the connected peer.
+     * @param dataSnapshot
+     */
     private void handlePeerAdded(DataSnapshot dataSnapshot){
-        //Mobile client should be the first peer added to the peers node, so any child added will be either an agent, shadow, or recorder
-        //Listen to agent's peer connection node
+
         Log.d(TAG, String.format("New Peer Added: %s", dataSnapshot.getKey()));
         mAgentId = dataSnapshot.getKey();
         mPeers.add(mAgentId);
-        Firebase agentPeerRef = mSessionRef.child("peers").child(mAgentId);
+        Firebase agentPeerRef = mRoomRef.child("peers").child(mAgentId);
         agentPeerRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
@@ -227,8 +251,12 @@ public class SignalingManager implements
         });
     }
 
+    /**
+     * This function is used to handle when we receive an offer/answer
+     * @param dataSnapshot
+     */
     private void handleSenderAdded(DataSnapshot dataSnapshot){
-        logAndToast(TAG, "Remote SDP Added");
+        Log.d(TAG, "Remote SDP Added");
         HashMap<String, Object> sender = null;
 
         //Get the Sender data
@@ -254,12 +282,16 @@ public class SignalingManager implements
         }
     }
 
+    /**
+     * This function is used to handle when ice candidates are received from a sender.
+     * @param dataSnapshot
+     */
     private void handleIceCandidateAdded(DataSnapshot dataSnapshot){
         HashMap<String, Object> ice = null;
         try{
              ice = (HashMap<String, Object>)dataSnapshot.getValue();
         } catch (Exception ex){
-            logAndToast(TAG, "Blew up when we tried to cast ice to a HashMap<String, Object>");
+            Log.d(TAG, "Blew up when we tried to cast ice to a HashMap<String, Object>");
             ex.printStackTrace();
             return;
         }
@@ -271,15 +303,6 @@ public class SignalingManager implements
         mPeerConnectionClient.addRemoteIceCandidate(iceCandidate);
     }
 
-    private void onAudioManagerChangedState() {
-        // TODO(henrika): disable video if AppRTCAudioManager.AudioDevice.EARPIECE
-        // is active.
-    }
-
-    private void logAndToast(String tag, String msg){
-        Log.d(tag, msg);
-    }
-
     //region - Peer Connection Event Callbacks
 
     /**
@@ -289,7 +312,7 @@ public class SignalingManager implements
      */
     @Override
     public void onLocalDescription(SessionDescription sdp) {
-        logAndToast(TAG, "VideoFragment:onLocalDescription");
+        Log.d(TAG, "VideoFragment:onLocalDescription");
         HashMap<String, Object> sender = new HashMap<>();
         HashMap<String, Object> signalData = new HashMap<>();
 
@@ -298,16 +321,16 @@ public class SignalingManager implements
         signalData.put("type", mSDPType.toString());
         sender.put(mClientId, signalData);
 
-        mSessionRef.child("connections").child(mAgentId).updateChildren(sender);
+        mRoomRef.child("connections").child(mAgentId).updateChildren(sender);
     }
 
     /**
-     * Each time an ice candidate is
+     * Each time a local ice candidate is created from PeerConnectionClient
      * @param candidate
      */
     @Override
     public void onIceCandidate(IceCandidate candidate) {
-        logAndToast(TAG, "VideoFragment:onIceCandidate");
+        Log.d(TAG, "VideoFragment:onIceCandidate");
         //Add this ice candidate to connected peer
 
         HashMap<String, Object> iceCandidate = new HashMap<>();
@@ -320,7 +343,7 @@ public class SignalingManager implements
 
     @Override
     public void onIceConnected() {
-        logAndToast(TAG, "VideoFragment:onIceConnected");
+        Log.d(TAG, "VideoFragment:onIceConnected");
         mIsConnectionEstablished = true;
         mActivity.runOnUiThread(new Runnable() {
             @Override
@@ -332,17 +355,17 @@ public class SignalingManager implements
 
     @Override
     public void onIceDisconnected() {
-        logAndToast(TAG, "VideoFragment:onIceDisconnected");
+        Log.d(TAG, "VideoFragment:onIceDisconnected");
     }
 
     @Override
     public void onPeerConnectionClosed() {
-        logAndToast(TAG, "VideoFragment:onPeerConnectionClosed");
+        Log.d(TAG, "VideoFragment:onPeerConnectionClosed");
     }
 
     @Override
     public void onPeerConnectionError(String description) {
-        logAndToast(TAG, "VideoFragment:onPeerConnectionError");
+        Log.d(TAG, "VideoFragment:onPeerConnectionError");
     }
 
     //endregion

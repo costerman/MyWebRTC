@@ -36,11 +36,13 @@ public class WebRTCApp extends Application {
         mInstance.initInstance();
     }
 
+
+
     protected void initInstance(){
         //do initialization logic here
         mAppContext = this.getApplicationContext();
         Firebase.setAndroidContext(mAppContext);
-        mBaseDelFuego = new Firebase("https://webrtc-cloud.firebaseio.com");
+        mBaseDelFuego = new Firebase("https://mywebrtc.firebaseio.com/");
         mSignalingManager = new SignalingManager(mAppContext, mBaseDelFuego);
     }
 
